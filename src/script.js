@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const theme = document.body.classList.contains('light-mode') ? 'light' : 'dark';
         localStorage.setItem('theme', theme);
     });
+    
 
     initMap();
     getData();

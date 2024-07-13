@@ -18,10 +18,10 @@
     <div class="container">
         <div class="dashboard">
             <div class="card">
-                <h2>Dashboard</h2>
-                <p id="route-summary">Route Summary: </p>
-                <p id="route-fill-summary">Route Based on Level: </p>
-                <p id="total-distance">Total Distance: </p>
+                <h2>Summary</h2>
+                <p id="route-summary"></p>
+                <p id="route-fill-summary"></p>
+                <p id="total-distance"></p>
             </div>
         </div>
         <div class="sidebar" id="sidebar">
@@ -38,6 +38,7 @@
         </div>
     </div>
     <script>
+        // JavaScript for Firebase and Map initialization
         const firebaseConfig = {
             apiKey: "AIzaSyAKrvPTDE_YSFrbOLlwaIi-iM9ge-Pchz0",
             authDomain: "training-smart-trash-bin.firebaseapp.com",
@@ -48,7 +49,6 @@
             appId: "1:296309931657:web:0c7f0c04ed7e66ab44d058",
             measurementId: "G-MPY8Y3K9DJ"
         };
-        const weatherApiKey = '7553ab08f52d989fb7647ed3c748d8ed';
 
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
@@ -71,7 +71,6 @@
                 center: { lat: 11.5680, lng: 104.8900 },
                 zoom: 12,
                 disableDefaultUI: true,
-                zoomControl: true,
                 styles: [ // Add your custom map styles here
                     {
                         "featureType": "all",
@@ -299,10 +298,9 @@
             map.setCenter(userLocation);
         }
 
-
         function calculateShortestRoute(userLocation, station) {
             console.log("Calculating shortest route...");
-            document.getElementById('route-fill-summary').textContent = 'Route Based on Level:';
+            document.getElementById('route-fill-summary').textContent = '';
 
             const waypoints = bins.map(bin => ({
                 location: new google.maps.LatLng(bin.lat, bin.lng),
@@ -348,7 +346,7 @@
 
         function calculateRouteBasedOnFill(userLocation, station) {
             console.log("Calculating route based on fill and status...");
-            document.getElementById('route-summary').textContent = 'Route Summary:';
+            document.getElementById('route-summary').textContent = '';
 
             const relevantBins = bins.filter(bin => bin.level >= 75 && bin.status === 'full');
 
@@ -396,11 +394,12 @@
 
         function cancelRoute() {
             directionsRenderer.set('directions', null);
-            document.getElementById('route-summary').textContent = 'Route Summary:';
-            document.getElementById('route-fill-summary').textContent = 'Route Based on Level:';
-            document.getElementById('total-distance').textContent = 'Total Distance:';
+            document.getElementById('route-summary').textContent = '';
+            document.getElementById('route-fill-summary').textContent = '';
+            document.getElementById('total-distance').textContent = '';
             console.log("Route canceled.");
         }
+        
     </script>
     <script src="script.js"></script>
 </body>
