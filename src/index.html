@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trash Bin Monitor</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-storage.js"></script>
+    <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAKrvPTDE_YSFrbOLlwaIi-iM9ge-Pchz0"></script>
+</head>
+<body class="light-mode">
+    <div id="map" class="map">
+    </div>
+    <h1>Smart Trash Bin Monitor</h1>
+    <button id="theme-toggle">☰</button>
+    <div class="container">
+        <div class="dashboard">
+            <div class="card">
+                <h2>Dashboard</h2>
+                <p id="route-summary">Route Summary: </p>
+                <p id="route-fill-summary">Route Based on Level: </p>
+                <p id="total-distance">Total Distance: </p>
+            </div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <h2>Control</h2>
+            <label for="route-option">Select Route Option:</label>
+            <select id="route-option">
+                <option value="shortest">Shortest Route</option>
+                <option value="fill">Route Based on Level</option>
+            </select>
+            <label for="station-option">Select Station</label>
+            <select id="station-option"></select>
+            <button onclick="getRoute()">Get Route</button>
+            <button onclick="cancelRoute()">Cancel Route</button>
+        </div>
+    </div>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKrvPTDE_YSFrbOLlwaIi-iM9ge-Pchz0",
+            authDomain: "training-smart-trash-bin.firebaseapp.com",
+            databaseURL: "https://training-smart-trash-bin-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "training-smart-trash-bin",
+            storageBucket: "training-smart-trash-bin.appspot.com",
+            messagingSenderId: "296309931657",
+            appId: "1:296309931657:web:0c7f0c04ed7e66ab44d058",
+            measurementId: "G-MPY8Y3K9DJ"
+        };
+        const weatherApiKey = '7553ab08f52d989fb7647ed3c748d8ed';
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const storage = firebase.storage();
+
+        let map;
+        let directionsRenderer;
+        let directionsService;
+        let userMarker = null;
+        let markers = [];
+        let bins = [];
+        let stationMarker = [];
+        let stations = [];
+
+        function initMap() {
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer();
+
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 11.5680, lng: 104.8900 },
+                zoom: 12,
+                disableDefaultUI: true,
+                zoomControl: true,
+                styles: [ // Add your custom map styles here
+                    {
+                        "featureType": "all",
+                        "elementType": "geometry.fill",
+                        "stylers": [
+                            {
+                                "weight": "2.00"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "all",
+                        "elementType": "geometry.stroke",
+                        "stylers": [
+                            {
+                                "color": "#9c9c9c"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "all",
+                        "elementType": "labels.text",
+                        "stylers": [
+                            {
+                                "visibility": "on"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "landscape",
+                        "elementType": "all",
+                        "stylers": [
+                            {
+                                "color": "#f2f2f2"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "poi",
+                        "elementType": "all",
+                        "stylers": [
+                            {
+                                "visibility": "off"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "road",
+                        "elementType": "all",
+                        "stylers": [
+                            {
+                                "saturation": -100
+                            },
+                            {
+                                "lightness": -40
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "road.highway",
+                        "elementType": "all",
+                        "stylers": [
+                            {
+                                "visibility": "simplified"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "road.arterial",
+                        "elementType": "labels.icon",
+                        "stylers": [
+                            {
+                                "visibility": "off"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "transit",
+                        "elementType": "all",
+                        "stylers": [
+                            {
+                                "visibility": "off"
+                            }
+                        ]
+                    },
+                    {
+                        "featureType": "water",
+                        "elementType": "all",
+                        "stylers": [
+                            {
+                                "color": "#46bcec"
+                            },
+                            {
+                                "visibility": "on"
+                            }
+                        ]
+                    }
+                ]
+            });
+            directionsRenderer.setMap(map);
+        }
+
+        function updateBins(data) {
+            markers.forEach(marker => marker.setMap(null)); // Clear existing markers
+            markers = []; // Reset markers array
+            bins = []; // Reset bins array
+
+            Object.keys(data).forEach(binId => {
+                const binData = data[binId];
+                bins.push({
+                    id: binId,
+                    lat: binData.lat,
+                    lng: binData.lng,
+                    level: binData.fill,
+                    status: binData.stt // Assuming status is part of the data
+                });
+                const marker = new google.maps.Marker({
+                    position: { lat: binData.lat, lng: binData.lng },
+                    map: map,
+                    title: binId
+                });
+                markers.push(marker);
+            });
+            console.log("Bins array:", bins); // Log the updated bins array
+        }
+
+        function updateStations(data) {
+            stationMarker.forEach(marker => marker.setMap(null)); // Clear existing markers
+            stationMarker= [];
+            stations = []; // Reset stations array
+
+            const stationSelect = document.getElementById('station-option');
+            stationSelect.innerHTML = ''; // Clear existing options
+
+            Object.keys(data).forEach(stationId => {
+                const stationData = data[stationId];
+                stations.push({
+                    id: stationId,
+                    lat: stationData.lat,
+                    lng: stationData.lng
+                });
+                const marker = new google.maps.Marker({
+                    position: { lat: stationData.lat, lng: stationData.lng },
+                    map: map,
+                    title: stationId
+                });
+                const option = document.createElement('option');
+                option.value = stationId;
+                option.textContent = stationId;
+                stationSelect.appendChild(option);
+                stationMarker.push(marker);
+            });
+            console.log("Stations array:", stations); // Log the updated stations array
+        }
+
+        function getData() {
+            const binsRef = firebase.database().ref('/trash-bin-database/');
+            binsRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                console.log("Data fetched from Firebase:", data); // Log fetched data
+                if (data) {
+                    updateBins(data);
+                } else {
+                    console.log("No data available at this path.");
+                }
+            });
+
+            const stationsRef = firebase.database().ref('/station-database/');
+            stationsRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                console.log("Stations data fetched from Firebase:", data); // Log fetched stations data
+                if (data) {
+                    updateStations(data);
+                } else {
+                    console.log("No stations data available at this path.");
+                }
+            });
+        }
+
+        function getRoute() {
+            const routeOption = document.getElementById('route-option').value;
+            const stationId = document.getElementById('station-option').value;
+            const station = stations.find(s => s.id === stationId);
+
+            if (!station) {
+                console.log('Invalid station selected.');
+                return;
+            }
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    const userLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    console.log('User location: ', userLocation);
+                    updateUserLocation(userLocation);
+
+                    if (routeOption === 'shortest') {
+                        calculateShortestRoute(userLocation, station);
+                    } else if (routeOption === 'fill') {
+                        calculateRouteBasedOnFill(userLocation, station);
+                    }
+                }, error => {
+                    console.log('Error getting location: ' + error);
+                });
+            } else {
+                console.log('Geolocation is not supported by this browser.');
+            }
+        }
+
+        function updateUserLocation(userLocation) {
+            if (userMarker) {
+                userMarker.setPosition(userLocation);
+            } else {
+                userMarker = new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Location',
+                    icon: {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                    }
+                });
+            }
+            map.setCenter(userLocation);
+        }
+
+
+        function calculateShortestRoute(userLocation, station) {
+            console.log("Calculating shortest route...");
+            document.getElementById('route-fill-summary').textContent = 'Route Based on Level:';
+
+            const waypoints = bins.map(bin => ({
+                location: new google.maps.LatLng(bin.lat, bin.lng),
+                stopover: true
+            }));
+
+            const request = {
+                origin: new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                destination: new google.maps.LatLng(station.lat, station.lng),
+                waypoints: waypoints,
+                travelMode: 'DRIVING',
+                optimizeWaypoints: true,
+                unitSystem: google.maps.UnitSystem.METRIC
+            };
+
+            directionsService.route(request, (result, status) => {
+                if (status === 'OK') {
+                    directionsRenderer.setOptions({ suppressMarkers: true });
+                    directionsRenderer.setDirections(result);
+
+                    const route = result.routes[0];
+                    let routeSummary = 'Route Summary: Start - \n';
+                    let totalDistance = 0;
+
+                    route.legs.forEach(leg => {
+                        totalDistance += leg.distance.value; // distance in meters
+                    });
+
+                    route.waypoint_order.forEach(index => {
+                        routeSummary += `${bins[index].id} - \n`;
+                    });
+
+                    routeSummary += `End at ${station.id}`;
+                    totalDistance /= 1000; // Convert to kilometers
+
+                    document.getElementById('route-summary').textContent = routeSummary;
+                    document.getElementById('total-distance').textContent = `Total Distance: ${totalDistance.toFixed(2)} km`;
+                } else {
+                    console.log('Error getting directions: ' + status);
+                }
+            });
+        }
+
+        function calculateRouteBasedOnFill(userLocation, station) {
+            console.log("Calculating route based on fill and status...");
+            document.getElementById('route-summary').textContent = 'Route Summary:';
+
+            const relevantBins = bins.filter(bin => bin.level >= 75 && bin.status === 'full');
+
+            const waypoints = relevantBins.map(bin => ({
+                location: new google.maps.LatLng(bin.lat, bin.lng),
+                stopover: true
+            }));
+
+            const request = {
+                origin: new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                destination: new google.maps.LatLng(station.lat, station.lng),
+                waypoints: waypoints,
+                travelMode: 'DRIVING',
+                optimizeWaypoints: true,
+                unitSystem: google.maps.UnitSystem.METRIC
+            };
+
+            directionsService.route(request, (result, status) => {
+                if (status === 'OK') {
+                    directionsRenderer.setOptions({ suppressMarkers: true });
+                    directionsRenderer.setDirections(result);
+
+                    const route = result.routes[0];
+                    let routeFillSummary = 'Route Based on Level: Start - \n';
+                    let totalDistance = 0;
+
+                    route.legs.forEach(leg => {
+                        totalDistance += leg.distance.value; // distance in meters
+                    });
+
+                    route.waypoint_order.forEach(index => {
+                        routeFillSummary += `${relevantBins[index].id} - \n`;
+                    });
+
+                    routeFillSummary += `End at ${station.id}`;
+                    totalDistance /= 1000; // Convert to kilometers
+
+                    document.getElementById('route-fill-summary').textContent = routeFillSummary;
+                    document.getElementById('total-distance').textContent = `Total Distance: ${totalDistance.toFixed(2)} km`;
+                } else {
+                    console.log('Error getting directions: ' + status);
+                }
+            });
+        }
+
+        function cancelRoute() {
+            directionsRenderer.set('directions', null);
+            document.getElementById('route-summary').textContent = 'Route Summary:';
+            document.getElementById('route-fill-summary').textContent = 'Route Based on Level:';
+            document.getElementById('total-distance').textContent = 'Total Distance:';
+            console.log("Route canceled.");
+        }
+    </script>
+    <script src="script.js"></script>
+</body>
+</html>
